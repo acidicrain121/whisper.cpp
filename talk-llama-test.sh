@@ -1,0 +1,1 @@
+./talk-llama -mw ./models/ggml-base.en.bin -ml ./models/airoboros-7b-gpt4-1.4.ggmlv3.q2_K.bin -t 8

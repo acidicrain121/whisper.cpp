@@ -43,7 +43,7 @@ struct whisper_params {
     bool no_timestamps = true;
     bool verbose_prompt = false;
 
-    std::string person      = "Georgi";
+    std::string person      = "HUMAN";
     std::string language    = "en";
     std::string model_wsp   = "models/ggml-base.en.bin";
     std::string model_llama = "models/ggml-llama-7B.bin";
@@ -286,7 +286,7 @@ int main(int argc, char ** argv) {
     float prob0 = 0.0f;
 
     const std::string chat_symb = ":";
-    const std::string bot_name  = "LLaMA";
+    const std::string bot_name  = "ASSISTANT";
 
     std::vector<float> pcmf32_cur;
     std::vector<float> pcmf32_prompt;
