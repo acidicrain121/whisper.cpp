@@ -172,12 +172,14 @@ struct llama_mmap {
 #ifdef _POSIX_MAPPED_FILES
     static constexpr bool SUPPORTED = true;
 
-    llama_mmap(struct llama_file * file, size_t prefetch = (size_t) -1 /* -1 = max value */) {
+    llama_mmap(struct llama_file * file, size_t prefetch = (size_t) -1 /* -1 = max value */, bool numa = false) {
         size = file->size;
         int fd = fileno(file->fp);
         int flags = MAP_SHARED;
+        // prefetch/readahead impairs performance on NUMA systems
+        if (numa) { prefetch = 0; }
 #ifdef __linux__
-        flags |= MAP_POPULATE;
+        if (prefetch) { flags |= MAP_POPULATE; }
 #endif
         addr = mmap(NULL, file->size, PROT_READ, flags, fd, 0);
         if (addr == MAP_FAILED) {
@@ -186,8 +188,16 @@ struct llama_mmap {
 
         if (prefetch > 0) {
             // Advise the kernel to preload the mapped memory
-            if (posix_madvise(addr, std::min(file->size, prefetch), POSIX_MADV_WILLNEED)) {
-                fprintf(stderr, "warning: posix_madvise(.., POSIX_MADV_WILLNEED) failed: %s\n",
+            if (madvise(addr, std::min(file->size, prefetch), MADV_WILLNEED)) {
+                fprintf(stderr, "warning: madvise(.., MADV_WILLNEED) failed: %s\n",
+                        strerror(errno));
+            }
+        }
+        if (numa) {
+            // advise the kernel not to use readahead
+            // (because the next page might not belong on the same node)
+            if (madvise(addr, file->size, MADV_RANDOM)) {
+                fprintf(stderr, "warning: madvise(.., MADV_RANDOM) failed: %s\n",
                         strerror(errno));
             }
         }
@@ -199,7 +209,9 @@ struct llama_mmap {
 #elif defined(_WIN32)
     static constexpr bool SUPPORTED = true;
 
-    llama_mmap(struct llama_file * file, bool prefetch = true) {
+    llama_mmap(struct llama_file * file, bool prefetch = true, bool numa = false) {
+        (void) numa;
+
         size = file->size;
 
         HANDLE hFile = (HANDLE) _get_osfhandle(_fileno(file->fp));
@@ -244,8 +256,10 @@ struct llama_mmap {
 #else
     static constexpr bool SUPPORTED = false;
 
-    llama_mmap(struct llama_file *, bool prefetch = true) {
-        (void)prefetch;
+    llama_mmap(struct llama_file *, bool prefetch = true, bool numa = false) {
+        (void) prefetch;
+        (void) numa;
+
         throw std::runtime_error(std::string("mmap not supported"));
     }
 #endif
@@ -405,13 +419,29 @@ struct llama_buffer {
     llama_buffer() = default;
 
     void resize(size_t len) {
+#ifdef GGML_USE_METAL
+        free(addr);
+        int result = posix_memalign((void **) &addr, getpagesize(), len);
+        if (result == 0) {
+            memset(addr, 0, len);
+        }
+        else {
+            addr = NULL;
+        }
+#else
         delete[] addr;
         addr = new uint8_t[len];
+#endif
         size = len;
     }
 
     ~llama_buffer() {
+#ifdef GGML_USE_METAL
+        free(addr);
+#else
         delete[] addr;
+#endif
+        addr = NULL;
     }
 
     // disable copy and move

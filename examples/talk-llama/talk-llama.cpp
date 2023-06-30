@@ -235,7 +235,7 @@ int main(int argc, char ** argv) {
 
     // llama init
 
-    llama_init_backend();
+    llama_init_backend(false);
 
     auto lparams = llama_context_default_params();
 
