@@ -219,6 +219,25 @@ ifneq ($(filter armv8%,$(UNAME_M)),)
 	CXXFLAGS += -mfpu=neon-fp-armv8 -mfp16-format=ieee -funsafe-math-optimizations -mno-unaligned-access
 endif
 
+#option(LLAMA_K_QUANTS                        "llama: use k-quants"                              ON)
+#option(LLAMA_QKK_64                          "llama: use super-block size of 64 for k-quants"   OFF)
+
+
+#ifndef LLAMA_NO_K_QUANTS
+	CFLAGS   += -DGGML_USE_K_QUANTS
+	CXXFLAGS += -DGGML_USE_K_QUANTS
+	OBJS     += k_quants.o
+#ifdef LLAMA_QKK_64
+#	CFLAGS   += -DGGML_QKK_64
+#	CXXFLAGS += -DGGML_QKK_64
+#endif
+#endif
+
+#ifdef LLAMA_NO_K_QUANTS
+k_quants.o: k_quants.c k_quants.h
+	$(CC) $(CFLAGS) -c $< -o $@
+#endif # LLAMA_NO_K_QUANTS
+
 #
 # Print build information
 #
@@ -240,6 +259,12 @@ $(info )
 
 ggml.o: ggml.c ggml.h ggml-cuda.h
 	$(CC)  $(CFLAGS)   -c $< -o $@
+
+#llama.o: examples/talk-llama/llama.cpp ggml.h ggml-cuda.h ggml-metal.h examples/talk-llama/llama.h examples/talk-llama/llama-util.h
+#	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+libllama.so: llama.o ggml.o $(OBJS)
+	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
 
 whisper.o: whisper.cpp whisper.h ggml.h ggml-cuda.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -293,8 +318,8 @@ command: examples/command/command.cpp $(SRC_COMMON) $(SRC_COMMON_SDL) ggml.o $(W
 talk: examples/talk/talk.cpp examples/talk/gpt-2.cpp $(SRC_COMMON) $(SRC_COMMON_SDL) ggml.o $(WHISPER_OBJ)
 	$(CXX) $(CXXFLAGS) examples/talk/talk.cpp examples/talk/gpt-2.cpp $(SRC_COMMON) $(SRC_COMMON_SDL) ggml.o $(WHISPER_OBJ) -o talk $(CC_SDL) $(LDFLAGS)
 
-talk-llama: examples/talk-llama/talk-llama.cpp examples/talk-llama/llama.cpp $(SRC_COMMON) $(SRC_COMMON_SDL) ggml.o $(WHISPER_OBJ)
-	$(CXX) $(CXXFLAGS) examples/talk-llama/talk-llama.cpp examples/talk-llama/llama.cpp $(SRC_COMMON) $(SRC_COMMON_SDL) ggml.o $(WHISPER_OBJ) -o talk-llama $(CC_SDL) $(LDFLAGS)
+talk-llama: examples/talk-llama/talk-llama.cpp examples/talk-llama/llama.cpp $(SRC_COMMON) $(SRC_COMMON_SDL) k_quants.o ggml.o $(WHISPER_OBJ)
+	$(CXX) $(CXXFLAGS) examples/talk-llama/talk-llama.cpp examples/talk-llama/llama.cpp $(SRC_COMMON) $(SRC_COMMON_SDL) k_quants.o ggml.o $(WHISPER_OBJ) -o talk-llama $(CC_SDL) $(LDFLAGS)
 
 #
 # Audio samples
